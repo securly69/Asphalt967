@@ -782,9 +782,11 @@ lucide.createIcons();
 (function(){
   const proxyDiv = document.getElementById('proxy-div');
   const navbar = document.querySelector('.navbar');
-  const observer = new MutationObserver(()=>{
-    if(proxyDiv.classList.contains('show-proxy-div')) navbar.style.display='none';
-    else navbar.style.display='flex';
-  });
-  observer.observe(proxyDiv, {attributes:true, attributeFilter:['class']});
+  if (proxyDiv && navbar) {
+    const observer = new MutationObserver(()=>{
+      if(proxyDiv.classList.contains('show-proxy-div')) navbar.style.display='none';
+      else navbar.style.display='flex';
+    });
+    observer.observe(proxyDiv, {attributes:true, attributeFilter:['class']});
+  }
 })();
