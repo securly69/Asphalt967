@@ -7,7 +7,6 @@ const navAddress = document.getElementById("nav-bar-address");
 const searchEngineInputs = document.querySelectorAll("#uv-search-engine");
 const error = document.getElementById("uv-error");
 const errorCode = document.getElementById("uv-error-code");
-const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
 
 const STORAGE_KEYS = {
   BOOKMARKS: 'madEggBrowser_bookmarks',
@@ -29,6 +28,7 @@ document.addEventListener("DOMContentLoaded", function() {
   loadBookmarks();
   loadSearchEngine();
   type();
+  newTab();
 });
 
 function setupEventListeners() {
@@ -58,9 +58,9 @@ function setupEventListeners() {
 
   saveBookmarkButton?.addEventListener('click', saveBookmark);
   
-  document.getElementById('show-custom-engine')?.addEventListener('click', showCustomEngineModal);
+  document.querySelector('.search-engine-dropdownaa')?.addEventListener('click', () => toggleDropdown(0));
   document.getElementById('add-custom-engine-btn')?.addEventListener('click', addCustomEngine);
-  document.getElementById('cancel-custom-engine')?.addEventListener('click', function() {
+  document.getElementById('cancel-custom-engine')?.addEventListener('click', () => {
     document.getElementById('custom-engine-modal').style.display = 'none';
   });
 
@@ -143,11 +143,6 @@ async function handleSearch(inputElement, isMainSearch) {
       const iframe = getActiveIframe();
       const prefix = __uv$config.prefix;
       const encUrl = prefix + __uv$config.encodeUrl(url);
-      
-      const wispUrl = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-      if (await connection.getTransport() !== "/epoxy/index.mjs") {
-        await connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }]);
-      }
       
       const finalUrl = "http://localhost:8080" + encUrl;
       
@@ -382,8 +377,7 @@ function loadSearchEngine() {
     });
     
     document.querySelector('.search-engine-dropdownaa img').src = savedIcon;
-    document.getElementById('statusMessage-0').textContent = 
-      `Searching with ${getEngineName(savedEngine)}`;
+    document.getElementById('statusMessage-0').textContent = `Searching with ${getEngineName(savedEngine)}`;
     
     const tempUrl = savedEngine.includes("%s") ? savedEngine.replace("%s", "") : savedEngine;
     const homePageUrl = new URL(tempUrl).origin + "/";
@@ -428,9 +422,7 @@ function universalAdapter() {
     
     const titleElement = document.getElementById(`title-${id}`);
     if (titleElement) {
-      titleElement.textContent = (frame.contentDocument && frame.contentDocument.title) || 
-                                url.split("/").pop() || 
-                                "untitled";
+      titleElement.textContent = (frame.contentDocument && frame.contentDocument.title) || url.split("/").pop() || "untitled";
     }
     
     const faviconElement = document.getElementById(`favicon-${id}`);
@@ -460,8 +452,7 @@ function updateTimeDate() {
     minute: '2-digit', 
     second: '2-digit'
   };
-  document.getElementById('time-date').textContent =
-    date.toLocaleDateString('en-US', options).replace(' at', ',');
+  document.getElementById('time-date').textContent = date.toLocaleDateString('en-US', options).replace(' at', ',');
 }
 
 function SHS() {
@@ -512,13 +503,11 @@ function AB() {
       style.width = style.height = "100%";
       
       const script = doc.createElement("script");
-      script.textContent = `
-        window.onbeforeunload = function (event) {
-          const confirmationMessage = 'Leave Site?';
-          (event || window.event).returnValue = confirmationMessage;
-          return confirmationMessage;
-        };
-      `;
+      script.textContent = `window.onbeforeunload = function(event) {
+        const confirmationMessage = 'Leave Site?';
+        (event || window.event).returnValue = confirmationMessage;
+        return confirmationMessage;
+      };`;
       
       doc.head.appendChild(link);
       doc.body.appendChild(iframe);
@@ -569,8 +558,7 @@ function type() {
 function addCustomEngine() {
     const customName = document.getElementById('custom-engine-name').value.trim();
     const customUrl = document.getElementById('custom-engine-url').value.trim();
-    const customIcon = document.getElementById('custom-engine-icon').value.trim() || 
-                      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split('?')[0].split('/')[2])}&size=256`;
+    const customIcon = document.getElementById('custom-engine-icon').value.trim() || `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split('?')[0].split('/')[2])}&size=256`;
     const editMode = document.getElementById('custom-engine-modal-title').textContent === 'Edit Search Engine';
     const originalUrl = document.getElementById('custom-engine-modal').dataset.originalUrl;
   
@@ -591,31 +579,17 @@ function addCustomEngine() {
       const existingEngine = document.querySelector(`.dropdown-contentaa a[data-engine="${originalUrl}"]`);
       if (existingEngine) {
         existingEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
-        existingEngine.innerHTML = `
-          <img src="${customIcon}" alt="${customName}">
-          ${customName}
-          <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
-          <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
-        `;
+        existingEngine.innerHTML = `<img src="${customIcon}" alt="${customName}">${customName}<i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i><i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>`;
       }
     } else {
       const newEngine = document.createElement('a');
       newEngine.href = "javascript:void(0);";
       newEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
       newEngine.onclick = function() {
-        selectEngine(
-          customIcon,
-          customUrl.includes("%s") ? customUrl : customUrl + "%s",
-          0
-        );
+        selectEngine(customIcon, customUrl.includes("%s") ? customUrl : customUrl + "%s", 0);
       };
   
-      newEngine.innerHTML = `
-        <img src="${customIcon}" alt="${customName}">
-        ${customName}
-        <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
-        <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
-      `;
+      newEngine.innerHTML = `<img src="${customIcon}" alt="${customName}">${customName}<i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i><i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>`;
   
       dropdownContent.insertBefore(newEngine, document.querySelector('.add-custom-engine'));
     }
@@ -694,12 +668,7 @@ function addBookmarkToDOM(name, url, iconUrl) {
         faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
     }
     
-    bookmark.innerHTML = `
-      <img src="${faviconUrl}" alt="${name}">
-      <span>${name}</span>
-      <button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button>
-      <button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>
-    `;
+    bookmark.innerHTML = `<img src="${faviconUrl}" alt="${name}"><span>${name}</span><button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button><button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>`;
     
     bookmarksContainer.insertBefore(bookmark, document.getElementById('add-bookmark'));
     
