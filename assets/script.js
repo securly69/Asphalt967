@@ -7,7 +7,6 @@ const navAddress = document.getElementById("nav-bar-address");
 const searchEngineInputs = document.querySelectorAll("#uv-search-engine");
 const error = document.getElementById("uv-error");
 const errorCode = document.getElementById("uv-error-code");
-const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
 
 const STORAGE_KEYS = {
   BOOKMARKS: 'madEggBrowser_bookmarks',
@@ -116,11 +115,6 @@ async function handleSearch(inputElement, isMainSearch) {
     const url = search(query, document.querySelector("#uv-search-engine").value);
     const prefix = __uv$config.prefix;
     const encUrl = prefix + __uv$config.encodeUrl(url);
-    
-    const wispUrl = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-    if (await connection.getTransport() !== "/epoxy/index.mjs") {
-      await connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }]);
-    }
     
     const finalUrl = "http://localhost:8080" + encUrl;
     
