@@ -28,9 +28,7 @@ document.addEventListener("DOMContentLoaded", function() {
   updateTimeDate();
   loadBookmarks();
   loadSearchEngine();
-  
   if (rotatingText) type();
-  
   newTab();
 });
 
@@ -163,7 +161,7 @@ async function handleSearch(inputElement, isMainSearch) {
       const iframe = getActiveIframe();
       const prefix = __uv$config.prefix;
       const encUrl = prefix + __uv$config.encodeUrl(url);
-      const finalUrl = "http://localhost:8080" + encUrl;
+      const finalUrl = "/proxy/" + encUrl;
       
       showProxy();
       
