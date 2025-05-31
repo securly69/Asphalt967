@@ -7,7 +7,7 @@ const navAddress = document.getElementById("nav-bar-address");
 const searchEngineInputs = document.querySelectorAll("#uv-search-engine");
 const error = document.getElementById("uv-error");
 const errorCode = document.getElementById("uv-error-code");
-const rotatingText = document.getElementById('rotating-text');
+const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
 
 const STORAGE_KEYS = {
   BOOKMARKS: 'madEggBrowser_bookmarks',
@@ -28,74 +28,56 @@ document.addEventListener("DOMContentLoaded", function() {
   updateTimeDate();
   loadBookmarks();
   loadSearchEngine();
-  if (rotatingText) type();
-  newTab();
+  type();
 });
 
 function setupEventListeners() {
-  if (uvForm) uvForm.addEventListener("submit", async e => {
+  uvForm?.addEventListener("submit", async e => {
     e.preventDefault();
     await handleSearch(uvAddress, true);
   });
 
-  if (navForm) navForm.addEventListener("submit", async e => {
+  navForm?.addEventListener("submit", async e => {
     e.preventDefault();
     await handleSearch(navAddress, false);
-  });
-
-  if (uvAddress) uvAddress.addEventListener("keydown", async e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      await handleSearch(uvAddress, true);
-    }
   });
 
   const addBookmarkButton = document.getElementById('add-bookmark');
   const saveBookmarkButton = document.getElementById('save-bookmark');
   
-  if (addBookmarkButton) addBookmarkButton.addEventListener('click', () => {
-    const modal = document.getElementById('add-bookmark-modal');
-    if (modal) modal.style.display = 'flex';
+  addBookmarkButton?.addEventListener('click', () => {
+    document.getElementById('add-bookmark-modal').style.display = 'flex';
   });
 
-  if (saveBookmarkButton) saveBookmarkButton.addEventListener('click', saveBookmark);
+  saveBookmarkButton?.addEventListener('click', saveBookmark);
   
-  const dropdownBtn = document.querySelector('.search-engine-dropdownaa');
-  if (dropdownBtn) dropdownBtn.addEventListener('click', () => toggleDropdown(0));
-  
-  const addEngineBtn = document.getElementById('add-custom-engine-btn');
-  if (addEngineBtn) addEngineBtn.addEventListener('click', addCustomEngine);
-  
-  const cancelEngineBtn = document.getElementById('cancel-custom-engine');
-  if (cancelEngineBtn) cancelEngineBtn.addEventListener('click', () => {
-    const modal = document.getElementById('custom-engine-modal');
-    if (modal) modal.style.display = 'none';
+  document.getElementById('show-custom-engine')?.addEventListener('click', showCustomEngineModal);
+  document.getElementById('add-custom-engine-btn')?.addEventListener('click', addCustomEngine);
+  document.getElementById('cancel-custom-engine')?.addEventListener('click', function() {
+    document.getElementById('custom-engine-modal').style.display = 'none';
   });
 
-  const cancelBookmarkBtn = document.getElementById('cancel-bookmark');
-  if (cancelBookmarkBtn) cancelBookmarkBtn.addEventListener('click', () => {
-    const modal = document.getElementById('add-bookmark-modal');
-    if (modal) modal.style.display = 'none';
-    const nameInput = document.getElementById('bookmark-name');
-    const urlInput = document.getElementById('bookmark-url');
-    if (nameInput) nameInput.value = '';
-    if (urlInput) urlInput.value = '';
+  document.getElementById('cancel-bookmark')?.addEventListener('click', () => {
+    document.getElementById('add-bookmark-modal').style.display = 'none';
+    document.getElementById('bookmark-name').value = '';
+    document.getElementById('bookmark-url').value = '';
   });
 
-  if (navAddress) {
-    navAddress.addEventListener('focus', () => navAddress.select());
-    navAddress.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSearch(navAddress, false);
-      }
-    });
-  }
+  navAddress?.addEventListener('focus', () => {
+    navAddress.select();
+  });
+
+  navAddress?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearch(navAddress, false);
+    }
+  });
 }
 
 function toggleDropdown(index) {
   const dropdown = document.getElementById(`engineDropdown-${index}`);
-  if (dropdown) dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+  dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
 }
 
 function selectEngine(icon, engine, index) {
@@ -104,76 +86,54 @@ function selectEngine(icon, engine, index) {
   const engineName = document.querySelector(`#engineDropdown-${index} a[data-engine="${engine}"]`)?.textContent.trim() || "Custom";
   
   searchEngineInputs.forEach(input => {
-    if (input) input.value = engine.includes("%s") ? engine : engine + "%s";
+    input.value = engine.includes("%s") ? engine : engine + "%s";
   });
   
-  if (dropdownBtn) dropdownBtn.querySelector("img").src = icon;
-  if (statusMsg) statusMsg.textContent = `Searching with ${engineName}`;
-  
-  const dropdown = document.getElementById(`engineDropdown-${index}`);
-  if (dropdown) dropdown.style.display = "none";
+  dropdownBtn.querySelector("img").src = icon;
+  statusMsg.textContent = `Searching with ${engineName}`;
+  document.getElementById(`engineDropdown-${index}`).style.display = "none";
   
   saveSearchEngine(icon, engine.includes("%s") ? engine : engine + "%s");
 
   const tempUrl = engine.includes("%s") ? engine.replace("%s", "") : engine;
-  try {
-    const homePageUrl = new URL(tempUrl).origin + "/";
-    localStorage.setItem(STORAGE_KEYS.HOME_PAGE, homePageUrl);
-    const startPage = document.getElementById("uv-start-page");
-    if (startPage) startPage.value = homePageUrl;
-  } catch (e) {
-    console.error("Invalid URL:", e);
-  }
-}
-
-function formatSearch(input) {
-  try {
-    const url = new URL(input);
-    return url.href;
-  } catch (e) {
-    try {
-      const searchEngine = document.querySelector("#uv-search-engine")?.value;
-      if (searchEngine) {
-        if (searchEngine.includes("%s")) {
-          return searchEngine.replace("%s", encodeURIComponent(input));
-        }
-        return searchEngine + encodeURIComponent(input);
-      }
-    } catch (e) {
-      return `https://www.google.com/search?q=${encodeURIComponent(input)}`;
-    }
-  }
+  const homePageUrl = new URL(tempUrl).origin + "/";
+  localStorage.setItem(STORAGE_KEYS.HOME_PAGE, homePageUrl);
+  document.getElementById("uv-start-page").value = homePageUrl;
 }
 
 async function handleSearch(inputElement, isMainSearch) {
-  if (!inputElement) return;
   const query = inputElement.value.trim();
   if (!query) return;
   
   inputElement.value = "";
-  if (isMainSearch) inputElement.blur();
+  if (isMainSearch) {
+    inputElement.blur();
+  }
 
   try {
     await registerSW();
-    const url = formatSearch(query);
+    const iframe = getActiveIframe();
+    const url = search(query, document.querySelector("#uv-search-engine").value);
+    const prefix = __uv$config.prefix;
+    const encUrl = prefix + __uv$config.encodeUrl(url);
     
-    if (document.getElementById('frames')) {
-      const iframe = getActiveIframe();
-      const prefix = __uv$config.prefix;
-      const encUrl = prefix + __uv$config.encodeUrl(url);
-      const finalUrl = "/proxy/" + encUrl;
-      
-      showProxy();
-      
-      if (iframe) {
-        iframe.src = finalUrl;
-      } else {
-        newTab(finalUrl);
-      }
-
-      if (!isMainSearch) updateAddressBar();
+    const wispUrl = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
+    if (await connection.getTransport() !== "/epoxy/index.mjs") {
+      await connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }]);
+    }
+    
+    const finalUrl = "http://localhost:8080" + encUrl;
+    
+    showProxy();
+    
+    if (iframe) {
+      iframe.src = finalUrl;
     } else {
-      window.location.href = __uv$config.prefix + __uv$config.encodeUrl(url);
+      newTab(finalUrl);
+    }
+
+    if (!isMainSearch) {
+      updateAddressBar();
     }
   } catch (err) {
     console.error("Search error:", err);
@@ -184,12 +144,16 @@ async function handleSearch(inputElement, isMainSearch) {
 
 function updateAddressBar() {
   const f = getActiveIframe();
-  if (!f || !navAddress) return;
+  if (!f) return;
+  
   if (document.activeElement === navAddress) return;
   
   let raw;
-  try { raw = f.contentWindow.location.href; } 
-  catch { raw = f.src; }
+  try { 
+    raw = f.contentWindow.location.href; 
+  } catch { 
+    raw = f.src; 
+  }
   
   const enc = raw.replace(/^.*?__uv$config.prefix/, "");
   const dec = __uv$config.decodeUrl ? __uv$config.decodeUrl(enc) : atob(enc);
@@ -212,9 +176,8 @@ function newTab(url) {
   }
 
   const el = document.getElementById("tabBarTabs");
-  if (!el) return null;
-
   const tabId = getTabId();
+  
   el.innerHTML += `
     <div class="tabBarTab" id="tab${tabId}" onclick="openTab(${tabId})">
       <div class="tab-content">
@@ -225,16 +188,14 @@ function newTab(url) {
     </div>`;
   
   const tab = el.lastElementChild;
-  if (tab) setTimeout(() => tab.style.marginTop = "9px", 1);
+  setTimeout(() => tab.style.marginTop = "9px", 1);
   
   const frame = document.createElement("iframe");
   frame.src = url;
   frame.classList.add("tab");
   frame.id = "frame" + tabId;
   frame.style.cssText = "width:100%;height:100%;border:none;display:none;";
-  
-  const framesContainer = document.getElementById("frames");
-  if (framesContainer) framesContainer.append(frame);
+  document.getElementById("frames").append(frame);
   
   openTab(tabId);
   return frame;
@@ -266,29 +227,28 @@ function closeTab(tabId) {
   if (idx > -1) tabIds.splice(idx, 1);
   
   if (currentTab === tabId) {
-    if (tabIds.length) openTab(tabIds[tabIds.length - 1]);
-    else newTab();
+    if (tabIds.length) {
+      openTab(tabIds[tabIds.length - 1]);
+    } else {
+      newTab();
+    }
   }
 }
 
 function closeAllTabs() {
-  const frames = document.getElementById("frames");
-  const tabs = document.getElementById("tabBarTabs");
-  if (frames) frames.innerHTML = "";
-  if (tabs) tabs.innerHTML = "";
+  document.getElementById("frames").innerHTML = "";
+  document.getElementById("tabBarTabs").innerHTML = "";
   tabIds = [];
   currentTab = 0;
   newTab();
 }
 
 function showProxy() { 
-  const proxyDiv = document.getElementById("proxy-div");
-  if (proxyDiv) proxyDiv.className = "show-proxy-div"; 
+  document.getElementById("proxy-div").className = "show-proxy-div"; 
 }
 
 function hideProxy() { 
-  const proxyDiv = document.getElementById("proxy-div");
-  if (proxyDiv) proxyDiv.className = "hide-proxy-div"; 
+  document.getElementById("proxy-div").className = "hide-proxy-div"; 
 }
 
 function goHome() { 
@@ -298,26 +258,22 @@ function goHome() {
 
 function goBack() { 
   const f = getActiveIframe(); 
-  if (f && f.contentWindow) f.contentWindow.history.back(); 
+  f && f.contentWindow.history.back(); 
 }
 
 function goForward() { 
   const f = getActiveIframe(); 
-  if (f && f.contentWindow) f.contentWindow.history.forward(); 
+  f && f.contentWindow.history.forward(); 
 }
 
 function reloadPage() { 
   const f = getActiveIframe(); 
-  if (f && f.contentWindow) f.contentWindow.location.reload(); 
+  f && f.contentWindow.location.reload(); 
 }
 
 function proxyFullscreen() {
   const f = getActiveIframe();
-  if (f) {
-    if (f.requestFullscreen) f.requestFullscreen();
-    else if (f.webkitRequestFullscreen) f.webkitRequestFullscreen();
-    else if (f.msRequestFullscreen) f.msRequestFullscreen();
-  }
+  f && (f.requestFullscreen?.() || f.webkitRequestFullscreen?.() || f.msRequestFullscreen?.());
 }
 
 function windowPopout() {
@@ -328,7 +284,7 @@ function windowPopout() {
   }
   
   const f = getActiveIframe();
-  if (!f) return false;
+  if (!f) return;
   
   const iframe = popup.document.createElement("iframe");
   iframe.src = f.src;
@@ -343,34 +299,28 @@ function windowPopout() {
 
 function navigateBookmark(url) {
   if (!url) {
-    const clickedBookmark = event?.currentTarget;
-    if (clickedBookmark) url = clickedBookmark.dataset.url;
+    const clickedBookmark = event.currentTarget;
+    url = clickedBookmark.dataset.url;
   }
   
-  if (!url) return;
   if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-  
-  if (uvAddress) {
-    uvAddress.value = url;
-    uvAddress.focus();
-    handleSearch(uvAddress, true);
-  }
+  uvAddress.value = url;
+  uvAddress.focus();
+  handleSearch(uvAddress, true);
 }
 
 function saveBookmark() {
-    const nameInput = document.getElementById('bookmark-name');
-    const urlInput = document.getElementById('bookmark-url');
-    if (!nameInput || !urlInput) return;
-    
-    const name = nameInput.value.trim();
-    let url = urlInput.value.trim();
+    const name = document.getElementById('bookmark-name').value.trim();
+    let url = document.getElementById('bookmark-url').value.trim();
     
     if (!name || !url) {
         alert('Please fill in both fields');
         return;
     }
   
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
     
     try {
         new URL(url);
@@ -378,11 +328,9 @@ function saveBookmark() {
         const faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
         
         if (currentEditingBookmark) {
-            const span = currentEditingBookmark.querySelector('span');
-            const img = currentEditingBookmark.querySelector('img');
-            if (span) span.textContent = name;
+            currentEditingBookmark.querySelector('span').textContent = name;
             currentEditingBookmark.dataset.url = url;
-            if (img) img.src = faviconUrl;
+            currentEditingBookmark.querySelector('img').src = faviconUrl;
         } else {
             addBookmarkToDOM(name, url, faviconUrl);
         }
@@ -400,24 +348,17 @@ function loadSearchEngine() {
   
   if (savedEngine && savedIcon) {
     searchEngineInputs.forEach(input => {
-      if (input) input.value = savedEngine.includes("%s") ? savedEngine : savedEngine + "%s";
+      input.value = savedEngine.includes("%s") ? savedEngine : savedEngine + "%s";
     });
     
-    const dropdownImg = document.querySelector('.search-engine-dropdownaa img');
-    if (dropdownImg) dropdownImg.src = savedIcon;
-    
-    const statusMsg = document.getElementById('statusMessage-0');
-    if (statusMsg) statusMsg.textContent = `Searching with ${getEngineName(savedEngine)}`;
+    document.querySelector('.search-engine-dropdownaa img').src = savedIcon;
+    document.getElementById('statusMessage-0').textContent = 
+      `Searching with ${getEngineName(savedEngine)}`;
     
     const tempUrl = savedEngine.includes("%s") ? savedEngine.replace("%s", "") : savedEngine;
-    try {
-      const homePageUrl = new URL(tempUrl).origin + "/";
-      localStorage.setItem(STORAGE_KEYS.HOME_PAGE, homePageUrl);
-      const startPage = document.getElementById("uv-start-page");
-      if (startPage) startPage.value = homePageUrl;
-    } catch (e) {
-      console.error("Invalid URL:", e);
-    }
+    const homePageUrl = new URL(tempUrl).origin + "/";
+    localStorage.setItem(STORAGE_KEYS.HOME_PAGE, homePageUrl);
+    document.getElementById("uv-start-page").value = homePageUrl;
   }
 }
 
@@ -445,8 +386,11 @@ function universalAdapter() {
     if (!frame) continue;
     
     let raw;
-    try { raw = frame.contentWindow.location.href; } 
-    catch { raw = frame.src; }
+    try { 
+      raw = frame.contentWindow.location.href; 
+    } catch { 
+      raw = frame.src; 
+    }
     
     const enc = raw.replace(/^.*?__uv$config.prefix/, "");
     const dec = __uv$config.decodeUrl ? __uv$config.decodeUrl(enc) : atob(enc);
@@ -454,7 +398,9 @@ function universalAdapter() {
     
     const titleElement = document.getElementById(`title-${id}`);
     if (titleElement) {
-      titleElement.textContent = (frame.contentDocument?.title) || url.split("/").pop() || "untitled";
+      titleElement.textContent = (frame.contentDocument && frame.contentDocument.title) || 
+                                url.split("/").pop() || 
+                                "untitled";
     }
     
     const faviconElement = document.getElementById(`favicon-${id}`);
@@ -462,12 +408,11 @@ function universalAdapter() {
       faviconElement.src = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(url)}&size=256`;
     }
     
-    if (id === currentTab && navAddress) {
+    if (id === currentTab) {
       navAddress.value = url;
-      if (url === savedHome && dropdownBtn && statusMsg) {
+      if (url === savedHome) {
         const savedIcon = localStorage.getItem(STORAGE_KEYS.SEARCH_ICON);
-        const img = dropdownBtn.querySelector("img");
-        if (img) img.src = savedIcon;
+        dropdownBtn.querySelector("img").src = savedIcon;
         statusMsg.textContent = `Home Page`;
       }
     }
@@ -485,8 +430,8 @@ function updateTimeDate() {
     minute: '2-digit', 
     second: '2-digit'
   };
-  const timeDate = document.getElementById('time-date');
-  if (timeDate) timeDate.textContent = date.toLocaleDateString('en-US', options).replace(' at', ',');
+  document.getElementById('time-date').textContent =
+    date.toLocaleDateString('en-US', options).replace(' at', ',');
 }
 
 function SHS() {
@@ -532,16 +477,18 @@ function AB() {
       link.href = icon;
       iframe.src = location.href;
       style.position = "fixed";
-      style.top = style.bottom = style.left = style.right = "0";
+      style.top = style.bottom = style.left = style.right = 0;
       style.border = style.outline = "none";
       style.width = style.height = "100%";
       
       const script = doc.createElement("script");
-      script.textContent = `window.onbeforeunload = function(event) {
-        const confirmationMessage = 'Leave Site?';
-        (event || window.event).returnValue = confirmationMessage;
-        return confirmationMessage;
-      };`;
+      script.textContent = `
+        window.onbeforeunload = function (event) {
+          const confirmationMessage = 'Leave Site?';
+          (event || window.event).returnValue = confirmationMessage;
+          return confirmationMessage;
+        };
+      `;
       
       doc.head.appendChild(link);
       doc.body.appendChild(iframe);
@@ -550,6 +497,7 @@ function AB() {
   }
 }
 
+const rotatingText = document.getElementById('rotating-text');
 const messages = [
   "Your phone's at 1%. Find a charger ASAP.",
   "Still waiting for a reply? Classic.",
@@ -566,8 +514,6 @@ const typingSpeed = 100;
 const pauseBetween = 2000;
 
 function type() {
-  if (!rotatingText) return;
-  
   const currentMessage = messages[currentMessageIndex];
   
   if (isDeleting) {
@@ -591,56 +537,63 @@ function type() {
 }
 
 function addCustomEngine() {
-    const customName = document.getElementById('custom-engine-name');
-    const customUrl = document.getElementById('custom-engine-url');
-    const customIcon = document.getElementById('custom-engine-icon');
-    if (!customName || !customUrl) return;
-    
-    const name = customName.value.trim();
-    let url = customUrl.value.trim();
-    const icon = customIcon?.value.trim() || `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(url.split('?')[0].split('/')[2])}&size=256`;
-    const editMode = document.getElementById('custom-engine-modal-title')?.textContent === 'Edit Search Engine';
-    const originalUrl = document.getElementById('custom-engine-modal')?.dataset.originalUrl;
+    const customName = document.getElementById('custom-engine-name').value.trim();
+    const customUrl = document.getElementById('custom-engine-url').value.trim();
+    const customIcon = document.getElementById('custom-engine-icon').value.trim() || 
+                      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split('?')[0].split('/')[2])}&size=256`;
+    const editMode = document.getElementById('custom-engine-modal-title').textContent === 'Edit Search Engine';
+    const originalUrl = document.getElementById('custom-engine-modal').dataset.originalUrl;
   
-    if (!name || !url) {
+    if (!customName || !customUrl) {
       alert('Please provide both a name and URL for the custom search engine');
       return;
     }
   
-    if (!url.includes("%s")) {
+    if (!customUrl.includes("%s")) {
       if (!confirm('Your URL doesn\'t contain a "%s" placeholder. The search term will be appended to the end. Is this okay?')) {
         return;
       }
     }
   
     const dropdownContent = document.querySelector('.dropdown-contentaa');
-    if (!dropdownContent) return;
     
-    if (editMode && originalUrl) {
+    if (editMode) {
       const existingEngine = document.querySelector(`.dropdown-contentaa a[data-engine="${originalUrl}"]`);
       if (existingEngine) {
-        existingEngine.setAttribute('data-engine', url.includes("%s") ? url : url + "%s");
-        existingEngine.innerHTML = `<img src="${icon}" alt="${name}">${name}<i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i><i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>`;
+        existingEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
+        existingEngine.innerHTML = `
+          <img src="${customIcon}" alt="${customName}">
+          ${customName}
+          <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
+          <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
+        `;
       }
     } else {
       const newEngine = document.createElement('a');
       newEngine.href = "javascript:void(0);";
-      newEngine.setAttribute('data-engine', url.includes("%s") ? url : url + "%s");
+      newEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
       newEngine.onclick = function() {
-        selectEngine(icon, url.includes("%s") ? url : url + "%s", 0);
+        selectEngine(
+          customIcon,
+          customUrl.includes("%s") ? customUrl : customUrl + "%s",
+          0
+        );
       };
   
-      newEngine.innerHTML = `<img src="${icon}" alt="${name}">${name}<i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i><i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>`;
+      newEngine.innerHTML = `
+        <img src="${customIcon}" alt="${customName}">
+        ${customName}
+        <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
+        <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
+      `;
   
-      const addCustomBtn = document.querySelector('.add-custom-engine');
-      if (addCustomBtn) dropdownContent.insertBefore(newEngine, addCustomBtn);
+      dropdownContent.insertBefore(newEngine, document.querySelector('.add-custom-engine'));
     }
     
-    const modal = document.getElementById('custom-engine-modal');
-    if (modal) modal.style.display = 'none';
-    customName.value = '';
-    customUrl.value = '';
-    if (customIcon) customIcon.value = '';
+    document.getElementById('custom-engine-modal').style.display = 'none';
+    document.getElementById('custom-engine-name').value = '';
+    document.getElementById('custom-engine-url').value = '';
+    document.getElementById('custom-engine-icon').value = '';
 }
 
 function deleteEngine(engineElement) {
@@ -650,33 +603,27 @@ function deleteEngine(engineElement) {
 }
 
 function showCustomEngineModal() {
-  const modal = document.getElementById('custom-engine-modal');
-  if (modal) modal.style.display = 'flex';
+  document.getElementById('custom-engine-modal').style.display = 'flex';
 }
 
 function saveBookmarksToStorage() {
     const bookmarks = [];
     document.querySelectorAll('.bookmark:not(#add-bookmark)').forEach(bookmark => {
-      const span = bookmark.querySelector('span');
-      const img = bookmark.querySelector('img');
-      if (span && img) {
-        bookmarks.push({
-          name: span.textContent,
-          url: bookmark.dataset.url,
-          icon: img.src
-        });
-      }
+      bookmarks.push({
+        name: bookmark.querySelector('span').textContent,
+        url: bookmark.dataset.url,
+        icon: bookmark.querySelector('img').src
+      });
     });
     localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
 }
 
 function loadBookmarks() {
+  const savedBookmarks = localStorage.getItem(STORAGE_KEYS.BOOKMARKS);
   const bookmarksContainer = document.getElementById('bookmarks');
-  if (!bookmarksContainer) return;
   
   document.querySelectorAll('.bookmark:not(#add-bookmark)').forEach(bm => bm.remove());
   
-  const savedBookmarks = localStorage.getItem(STORAGE_KEYS.BOOKMARKS);
   if (savedBookmarks) {
     try {
       JSON.parse(savedBookmarks).forEach(bookmark => {
@@ -706,9 +653,6 @@ function loadDefaultBookmarks() {
 
 function addBookmarkToDOM(name, url, iconUrl) {
     const bookmarksContainer = document.getElementById('bookmarks');
-    const addBookmarkBtn = document.getElementById('add-bookmark');
-    if (!bookmarksContainer || !addBookmarkBtn) return;
-    
     const bookmark = document.createElement('a');
     bookmark.href = '#';
     bookmark.className = 'bookmark';
@@ -720,20 +664,25 @@ function addBookmarkToDOM(name, url, iconUrl) {
         faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
     }
     
-    bookmark.innerHTML = `<img src="${faviconUrl}" alt="${name}"><span>${name}</span><button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button><button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>`;
+    bookmark.innerHTML = `
+      <img src="${faviconUrl}" alt="${name}">
+      <span>${name}</span>
+      <button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button>
+      <button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>
+    `;
     
-    bookmarksContainer.insertBefore(bookmark, addBookmarkBtn);
+    bookmarksContainer.insertBefore(bookmark, document.getElementById('add-bookmark'));
     
     const editBtn = bookmark.querySelector('.edit-bookmark');
     const deleteBtn = bookmark.querySelector('.delete-bookmark');
     
-    if (editBtn) editBtn.addEventListener('click', (e) => {
+    editBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       editBookmark(bookmark);
     });
     
-    if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
+    deleteBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (confirm('Delete this bookmark?')) {
@@ -762,7 +711,6 @@ function setHomePage(url) {
     }
   }
   
-  if (!url) return false;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://' + url;
   }
@@ -780,52 +728,41 @@ function setHomePage(url) {
 
 function editBookmark(bookmarkElement) {
     currentEditingBookmark = bookmarkElement;
-    const nameInput = document.getElementById('bookmark-name');
-    const urlInput = document.getElementById('bookmark-url');
-    const modal = document.getElementById('add-bookmark-modal');
-    
-    if (nameInput && urlInput && modal) {
-      const span = bookmarkElement.querySelector('span');
-      if (span) nameInput.value = span.textContent;
-      urlInput.value = bookmarkElement.dataset.url;
-      modal.style.display = 'flex';
-      nameInput.focus();
-    }
+    document.getElementById('bookmark-name').value = bookmarkElement.querySelector('span').textContent;
+    document.getElementById('bookmark-url').value = bookmarkElement.dataset.url;
+    document.getElementById('add-bookmark-modal').style.display = 'flex';
+    document.getElementById('bookmark-name').focus();
 }
 
 function editEngine(engineElement) {
   const name = engineElement.textContent.trim();
   const url = engineElement.dataset.engine;
-  const icon = engineElement.querySelector('img')?.src;
+  const icon = engineElement.querySelector('img').src;
   
-  const modalTitle = document.getElementById('custom-engine-modal-title');
-  const nameInput = document.getElementById('custom-engine-name');
-  const urlInput = document.getElementById('custom-engine-url');
-  const iconInput = document.getElementById('custom-engine-icon');
-  const modal = document.getElementById('custom-engine-modal');
-  
-  if (modalTitle && nameInput && urlInput && iconInput && modal) {
-    modalTitle.textContent = 'Edit Search Engine';
-    nameInput.value = name;
-    urlInput.value = url;
-    iconInput.value = icon || '';
-    modal.dataset.originalUrl = url;
-    modal.style.display = 'flex';
-  }
+  document.getElementById('custom-engine-modal-title').textContent = 'Edit Search Engine';
+  document.getElementById('custom-engine-name').value = name;
+  document.getElementById('custom-engine-url').value = url;
+  document.getElementById('custom-engine-icon').value = icon;
+  document.getElementById('custom-engine-modal').dataset.originalUrl = url;
+  document.getElementById('custom-engine-modal').style.display = 'flex';
 }
 
 let currentEditingBookmark = null;
 
 function closeBookmarkModal() {
-    const modal = document.getElementById('add-bookmark-modal');
-    const nameInput = document.getElementById('bookmark-name');
-    const urlInput = document.getElementById('bookmark-url');
-    
-    if (modal) modal.style.display = 'none';
-    if (nameInput) nameInput.value = '';
-    if (urlInput) urlInput.value = '';
+    document.getElementById('add-bookmark-modal').style.display = 'none';
+    document.getElementById('bookmark-name').value = '';
+    document.getElementById('bookmark-url').value = '';
     currentEditingBookmark = null;
 }
+
+document.getElementById('save-bookmark').addEventListener('click', saveBookmark);
+document.getElementById('cancel-bookmark').addEventListener('click', closeBookmarkModal);
+document.getElementById('add-bookmark').addEventListener('click', () => {
+  currentEditingBookmark = null;
+  document.getElementById('add-bookmark-modal').style.display = 'flex';
+  document.getElementById('bookmark-name').focus();
+});
 
 function sanitizeUrl(url) {
     let cleanUrl = url.replace(/^(https?:)?\/\//, '');
@@ -843,16 +780,14 @@ function updateBackgroundImage() {
   }
 }
 
-if (typeof lucide !== 'undefined') {
-  lucide.createIcons();
-}
+lucide.createIcons();
 
-const proxyDiv = document.getElementById('proxy-div');
-const navbar = document.querySelector('.navbar');
-
-if (proxyDiv && navbar) {
-  const observer = new MutationObserver(() => {
-    navbar.style.display = proxyDiv.classList.contains('show-proxy-div') ? 'none' : 'flex';
-  });
-  observer.observe(proxyDiv, {attributes: true, attributeFilter: ['class']});
-}
+(function(){
+  const proxyDiv = document.getElementById('proxy-div')
+  const navbar = document.querySelector('.navbar')
+  const observer = new MutationObserver(()=>{
+    if(proxyDiv.classList.contains('show-proxy-div'))navbar.style.display='none'
+    else navbar.style.display='flex'
+  })
+  observer.observe(proxyDiv,{attributes:true,attributeFilter:['class']})
+})()
