@@ -1,18 +1,24 @@
 "use strict";
+
 const STORAGE_KEYS = {
   BOOKMARKS: "madEggBrowser_bookmarks",
   SEARCH_ENGINE: "madEggBrowser_searchEngine",
   SEARCH_ICON: "madEggBrowser_searchIcon",
   HOME_PAGE: "madEggBrowser_homePage"
 };
+
 var currentTabId = 0;
 var currentTab = 0;
 var tabIds = [];
+
 document.addEventListener("DOMContentLoaded", function() {
+  // Attempt to initialize BareMux connection if available
   let connection = null;
   if (typeof BareMux !== "undefined") {
     connection = new BareMux.BareMuxConnection("/baremux/worker.js");
   }
+
+  // Grab DOM elements
   const uvForm = document.getElementById("uv-form");
   const uvAddress = document.getElementById("uv-address");
   const navForm = document.getElementById("nav-bar-form");
@@ -29,50 +35,88 @@ document.addEventListener("DOMContentLoaded", function() {
   const saveBookmarkBtn = document.getElementById("save-bookmark");
   const cancelBookmarkBtn = document.getElementById("cancel-bookmark");
   const addBookmarkBtn = document.getElementById("add-bookmark");
+
+  // Register service worker (register-sw.js should exist at project root)
+  async function registerSW() {
+    if ("serviceWorker" in navigator) {
+      try {
+        await navigator.serviceWorker.register("/register-sw.js");
+        console.log("Service worker registered");
+      } catch (e) {
+        console.error("Service worker registration failed:", e);
+      }
+    }
+  }
+
+  // Build search URL given a query and engine template
+  function search(query, engine) {
+    const encoded = encodeURIComponent(query);
+    if (engine.includes("%s")) {
+      return engine.replace("%s", encoded);
+    } else {
+      return engine + encoded;
+    }
+  }
+
+  // Handle form submissions or Enter key presses
   uvForm?.addEventListener("submit", async function(e) {
     e.preventDefault();
     await handleSearch(uvAddress, true);
   });
+
   navForm?.addEventListener("submit", async function(e) {
     e.preventDefault();
     await handleSearch(navAddress, false);
   });
+
   uvAddress?.addEventListener("keydown", async function(e) {
     if (e.key === "Enter") {
       e.preventDefault();
       await handleSearch(uvAddress, true);
     }
   });
+
   navAddress?.addEventListener("focus", function() {
     navAddress.select();
   });
+
   navAddress?.addEventListener("keydown", function(e) {
     if (e.key === "Enter") {
       e.preventDefault();
       handleSearch(navAddress, false);
     }
   });
+
   addBookmarkButton?.addEventListener("click", function() {
     document.getElementById("add-bookmark-modal").style.display = "flex";
   });
+
   saveBookmarkButton?.addEventListener("click", saveBookmark);
+
   showCustomEngineButton?.addEventListener("click", showCustomEngineModal);
+
   addCustomEngineButton?.addEventListener("click", addCustomEngine);
+
   cancelCustomEngineButton?.addEventListener("click", function() {
     document.getElementById("custom-engine-modal").style.display = "none";
   });
+
   cancelBookmarkButton?.addEventListener("click", function() {
     document.getElementById("add-bookmark-modal").style.display = "none";
     document.getElementById("bookmark-name").value = "";
     document.getElementById("bookmark-url").value = "";
   });
+
   saveBookmarkBtn?.addEventListener("click", saveBookmark);
   cancelBookmarkBtn?.addEventListener("click", closeBookmarkModal);
+
   addBookmarkBtn?.addEventListener("click", function() {
     currentEditingBookmark = null;
     document.getElementById("add-bookmark-modal").style.display = "flex";
     document.getElementById("bookmark-name").focus();
   });
+
+  // Initial setup
   updateBackgroundImage();
   setInterval(universalAdapter, 1000);
   setInterval(updateTimeDate, 1000);
@@ -80,100 +124,118 @@ document.addEventListener("DOMContentLoaded", function() {
   loadBookmarks();
   loadSearchEngine();
   type();
-  function handleSearch(inputElement, isMainSearch) {
-    return (async function() {
-      const query = inputElement.value.trim();
-      if (!query) return;
-      inputElement.value = "";
-      if (isMainSearch) {
-        inputElement.blur();
+
+  // Core search/navigation logic
+  async function handleSearch(inputElement, isMainSearch) {
+    const query = inputElement.value.trim();
+    if (!query) return;
+    inputElement.value = "";
+    if (isMainSearch) inputElement.blur();
+
+    try {
+      await registerSW();
+
+      const engineTemplate = document.querySelector("#uv-search-engine")?.value || "";
+      const url = search(query, engineTemplate);
+      const prefix = __uv$config.prefix;
+      const encodedUrl = prefix + __uv$config.encodeUrl(url);
+
+      let finalUrl = encodedUrl;
+      if (connection) {
+        const wispUrl =
+          (location.protocol === "https:" ? "wss" : "ws") +
+          "://" +
+          location.host +
+          "/wisp/";
+        if ((await connection.getTransport()) !== "/epoxy/index.mjs") {
+          await connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }]);
+        }
+        finalUrl = "http://localhost:8080" + encodedUrl;
       }
-      try {
-        await registerSW();
-        const url = search(query, document.querySelector("#uv-search-engine").value);
-        const prefix = __uv$config.prefix;
-        const encUrl = prefix + __uv$config.encodeUrl(url);
-        let finalUrl = encUrl;
-        if (connection) {
-          const wispUrl = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-          if (await connection.getTransport() !== "/epoxy/index.mjs") {
-            await connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }]);
-          }
-          finalUrl = "http://localhost:8080" + encUrl;
-        }
-        showProxy();
-        const iframe = getActiveIframe();
-        if (iframe) {
-          iframe.src = finalUrl;
-        } else {
-          newTab(finalUrl);
-        }
-        if (!isMainSearch) {
-          updateAddressBar();
-        }
-      } catch (err) {
-        console.error("Search error:", err);
-        if (error) error.textContent = "Failed to process search.";
-        if (errorCode) errorCode.textContent = err.toString();
+
+      showProxy();
+      const iframe = getActiveIframe();
+      if (iframe) {
+        iframe.src = finalUrl;
+      } else {
+        newTab(finalUrl);
       }
-    })();
+
+      if (!isMainSearch) updateAddressBar();
+    } catch (err) {
+      console.error("Search error:", err);
+      if (error) error.textContent = "Failed to process search.";
+      if (errorCode) errorCode.textContent = err.toString();
+    }
   }
+
   function updateAddressBar() {
     const f = getActiveIframe();
     if (!f) return;
     if (document.activeElement === navAddress) return;
+
     let raw;
     try {
       raw = f.contentWindow.location.href;
     } catch {
       raw = f.src;
     }
+
     const enc = raw.replace(/^.*?__uv\$config\.prefix/, "");
     const dec = __uv$config.decodeUrl ? __uv$config.decodeUrl(enc) : atob(enc);
     navAddress.value = dec.slice(dec.indexOf("https://"));
   }
+
   function getActiveIframe() {
     return document.getElementById("frame" + currentTab);
   }
+
   function getTabId() {
     tabIds.push(currentTabId);
     return currentTabId++;
   }
+
   function newTab(url) {
     if (!url) {
       const homePage = localStorage.getItem(STORAGE_KEYS.HOME_PAGE) || "https://google.com/";
       url = __uv$config.prefix + __uv$config.encodeUrl(homePage);
     }
-    const el = document.getElementById("tabBarTabs");
+
+    const tabContainer = document.getElementById("tabBarTabs");
     const tabId = getTabId();
-    el.innerHTML += `
-    <div class="tabBarTab" id="tab${tabId}" onclick="openTab(${tabId})">
-      <div class="tab-content">
-        <img id="favicon-${tabId}" class="tab-favicon">
-        <span id="title-${tabId}" class="tab-title">New Tab</span>
-        <i class="fa-solid fa-xmark tab-close" onclick="event.stopPropagation();closeTab(${tabId})"></i>
-      </div>
-    </div>`;
-    const tab = el.lastElementChild;
+    tabContainer.innerHTML += `
+      <div class="tabBarTab" id="tab${tabId}" onclick="openTab(${tabId})">
+        <div class="tab-content">
+          <img id="favicon-${tabId}" class="tab-favicon">
+          <span id="title-${tabId}" class="tab-title">New Tab</span>
+          <i class="fa-solid fa-xmark tab-close" onclick="event.stopPropagation();closeTab(${tabId})"></i>
+        </div>
+      </div>`;
+
+    const tabEl = tabContainer.lastElementChild;
     setTimeout(function() {
-      tab.style.marginTop = "9px";
+      tabEl.style.marginTop = "9px";
     }, 1);
+
     const frame = document.createElement("iframe");
     frame.src = url;
     frame.classList.add("tab");
     frame.id = "frame" + tabId;
     frame.style.cssText = "width:100%;height:100%;border:none;display:none;";
     document.getElementById("frames").append(frame);
+
     openTab(tabId);
     return frame;
   }
-  function openTab(tabId) {
+
+  window.openTab = function(tabId) {
     document.querySelectorAll(".tabBarTab").forEach(function(t) {
       t.classList.remove("active");
     });
     document.querySelectorAll(".tab").forEach(function(f) {
       f.style.display = "none";
     });
+
     currentTab = tabId;
     const tabEl = document.getElementById("tab" + tabId);
     const frameEl = document.getElementById("frame" + tabId);
@@ -182,14 +244,17 @@ document.addEventListener("DOMContentLoaded", function() {
       frameEl.style.display = "block";
       updateAddressBar();
     }
-  }
-  function closeTab(tabId) {
+  };
+
+  window.closeTab = function(tabId) {
     const tabEl = document.getElementById("tab" + tabId);
     const frameEl = document.getElementById("frame" + tabId);
     if (tabEl) tabEl.remove();
     if (frameEl) frameEl.remove();
+
     const idx = tabIds.indexOf(tabId);
     if (idx > -1) tabIds.splice(idx, 1);
+
     if (currentTab === tabId) {
       if (tabIds.length) {
         openTab(tabIds[tabIds.length - 1]);
@@ -197,41 +262,50 @@ document.addEventListener("DOMContentLoaded", function() {
         newTab();
       }
     }
-  }
-  function closeAllTabs() {
+  };
+
+  window.closeAllTabs = function() {
     document.getElementById("frames").innerHTML = "";
     document.getElementById("tabBarTabs").innerHTML = "";
     tabIds = [];
     currentTab = 0;
     newTab();
-  }
-  function showProxy() {
+  };
+
+  window.showProxy = function() {
     document.getElementById("proxy-div").className = "show-proxy-div";
-  }
-  function hideProxy() {
+  };
+
+  window.hideProxy = function() {
     document.getElementById("proxy-div").className = "hide-proxy-div";
-  }
-  function goHome() {
+  };
+
+  window.goHome = function() {
     closeAllTabs();
     hideProxy();
-  }
-  function goBack() {
+  };
+
+  window.goBack = function() {
     const f = getActiveIframe();
     f && f.contentWindow.history.back();
-  }
-  function goForward() {
+  };
+
+  window.goForward = function() {
     const f = getActiveIframe();
     f && f.contentWindow.history.forward();
-  }
-  function reloadPage() {
+  };
+
+  window.reloadPage = function() {
     const f = getActiveIframe();
     f && f.contentWindow.location.reload();
-  }
-  function proxyFullscreen() {
+  };
+
+  window.proxyFullscreen = function() {
     const f = getActiveIframe();
     f && (f.requestFullscreen?.() || f.webkitRequestFullscreen?.() || f.msRequestFullscreen?.());
-  }
-  function windowPopout() {
+  };
+
+  window.windowPopout = function() {
     const popup = open("about:blank", "_blank");
     if (!popup || popup.closed) {
       alert("Window blocked. Please allow popups for this site.");
@@ -248,7 +322,8 @@ document.addEventListener("DOMContentLoaded", function() {
     popup.document.body.innerHTML = "";
     popup.document.body.appendChild(iframe);
     return true;
-  }
+  };
+
   function navigateBookmark(url) {
     if (!url) {
       const clickedBookmark = event.currentTarget;
@@ -259,6 +334,7 @@ document.addEventListener("DOMContentLoaded", function() {
     uvAddress.focus();
     handleSearch(uvAddress, true);
   }
+
   function saveBookmark() {
     const name = document.getElementById("bookmark-name").value.trim();
     let url = document.getElementById("bookmark-url").value.trim();
@@ -272,7 +348,9 @@ document.addEventListener("DOMContentLoaded", function() {
     try {
       new URL(url);
       const cleanUrl = sanitizeUrl(url);
-      const faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
+      const faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(
+        cleanUrl
+      )}&size=256`;
       if (currentEditingBookmark) {
         currentEditingBookmark.querySelector("span").textContent = name;
         currentEditingBookmark.dataset.url = url;
@@ -286,6 +364,7 @@ document.addEventListener("DOMContentLoaded", function() {
       alert("Please enter a valid URL");
     }
   }
+
   function loadSearchEngine() {
     const savedEngine = localStorage.getItem(STORAGE_KEYS.SEARCH_ENGINE);
     const savedIcon = localStorage.getItem(STORAGE_KEYS.SEARCH_ICON);
@@ -304,6 +383,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (uvStart) uvStart.value = homePageUrl;
     }
   }
+
   function getEngineName(engineUrl) {
     const engineMap = {
       "https://www.google.com/search?q=": "Google",
@@ -312,34 +392,45 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     return engineMap[engineUrl] || "Custom";
   }
+
   function saveSearchEngine(icon, engine) {
     localStorage.setItem(STORAGE_KEYS.SEARCH_ENGINE, engine);
     localStorage.setItem(STORAGE_KEYS.SEARCH_ICON, icon);
   }
+
   function universalAdapter() {
     const savedHome = localStorage.getItem(STORAGE_KEYS.HOME_PAGE) || "";
     const dropdownBtn = document.querySelector(".search-engine-dropdownaa");
     const statusMsg = document.getElementById("statusMessage-0");
+
     for (let id of tabIds) {
       const frame = document.getElementById("frame" + id);
       if (!frame) continue;
+
       let raw;
       try {
         raw = frame.contentWindow.location.href;
       } catch {
         raw = frame.src;
       }
+
       const enc = raw.replace(/^.*?__uv\$config\.prefix/, "");
       const dec = __uv$config.decodeUrl ? __uv$config.decodeUrl(enc) : atob(enc);
       const url = dec.slice(dec.indexOf("https://"));
+
       const titleElement = document.getElementById(`title-${id}`);
       if (titleElement) {
-        titleElement.textContent = (frame.contentDocument && frame.contentDocument.title) || url.split("/").pop() || "untitled";
+        titleElement.textContent =
+          (frame.contentDocument && frame.contentDocument.title) || url.split("/").pop() || "untitled";
       }
+
       const faviconElement = document.getElementById(`favicon-${id}`);
       if (faviconElement) {
-        faviconElement.src = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(url)}&size=256`;
+        faviconElement.src = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(
+          url
+        )}&size=256`;
       }
+
       if (id === currentTab) {
         if (navAddress) navAddress.value = url;
         if (url === savedHome && dropdownBtn && statusMsg) {
@@ -350,6 +441,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     }
   }
+
   function updateTimeDate() {
     const date = new Date();
     const options = {
@@ -364,6 +456,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const timeDateEl = document.getElementById("time-date");
     if (timeDateEl) timeDateEl.textContent = date.toLocaleDateString("en-US", options).replace(" at", ",");
   }
+
   function SHS() {
     const sites = [
       "https://docs.google.com",
@@ -382,6 +475,7 @@ document.addEventListener("DOMContentLoaded", function() {
       window.open(site);
     });
   }
+
   function AB() {
     let inFrame;
     try {
@@ -399,32 +493,39 @@ document.addEventListener("DOMContentLoaded", function() {
         const style = iframe.style;
         const link = doc.createElement("link");
         const name = localStorage.getItem("name") || "Home";
-        const icon = localStorage.getItem("icon") || "https://raw.githubusercontent.com/UseInterstellar/Interstellar/refs/heads/main/static/favicon.ico";
+        const icon =
+          localStorage.getItem("icon") ||
+          "https://raw.githubusercontent.com/UseInterstellar/Interstellar/refs/heads/main/static/favicon.ico";
+
         doc.title = name;
         link.rel = "icon";
         link.href = icon;
         iframe.src = location.href;
         style.position = "fixed";
-        style.top = style.bottom = style.left = style.right = 0;
-        style.border = style.outline = "none";
-        style.width = style.height = "100%";
+        style.top = (style.bottom = style.left = style.right = 0);
+        style.border = (style.outline = "none");
+        style.width = (style.height = "100%");
+
         const script = doc.createElement("script");
         script.textContent = `
-        window.onbeforeunload = function (event) {
-          const confirmationMessage = 'Leave Site?';
-          (event || window.event).returnValue = confirmationMessage;
-          return confirmationMessage;
-        };
-      `;
+          window.onbeforeunload = function (event) {
+            const confirmationMessage = 'Leave Site?';
+            (event || window.event).returnValue = confirmationMessage;
+            return confirmationMessage;
+          };
+        `;
+
         doc.head.appendChild(link);
         doc.body.appendChild(iframe);
         doc.head.appendChild(script);
       }
     }
   }
+
   function type() {
     const rotatingTextEl = document.getElementById("rotating-text");
     if (!rotatingTextEl) return;
+
     const messages = [
       "Your phone's at 1%. Find a charger ASAP.",
       "Still waiting for a reply? Classic.",
@@ -433,11 +534,13 @@ document.addEventListener("DOMContentLoaded", function() {
       "Refresh again. It's not gonna change, but okay.",
       "How is it that we only notice how tired we are once we sit down?"
     ];
+
     let currentMessageIndex = 0;
     let currentCharIndex = 0;
     let isDeleting = false;
     const typingSpeed = 100;
     const pauseBetween = 2000;
+
     (function write() {
       const currentMessage = messages[currentMessageIndex];
       if (isDeleting) {
@@ -460,21 +563,33 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     })();
   }
+
   function addCustomEngine() {
     const customName = document.getElementById("custom-engine-name").value.trim();
     const customUrl = document.getElementById("custom-engine-url").value.trim();
-    const customIcon = document.getElementById("custom-engine-icon").value.trim() || `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split("?")[0].split("/")[2])}&size=256`;
+    const customIcon =
+      document.getElementById("custom-engine-icon").value.trim() ||
+      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(
+        customUrl.split("?")[0].split("/")[2]
+      )}&size=256`;
+
     const editMode = document.getElementById("custom-engine-modal-title").textContent === "Edit Search Engine";
     const originalUrl = document.getElementById("custom-engine-modal").dataset.originalUrl;
+
     if (!customName || !customUrl) {
       alert("Please provide both a name and URL for the custom search engine");
       return;
     }
     if (!customUrl.includes("%s")) {
-      if (!confirm('Your URL doesn\'t contain a "%s" placeholder. The search term will be appended to the end. Is this okay?')) {
+      if (
+        !confirm(
+          'Your URL doesn\'t contain a "%s" placeholder. The search term will be appended to the end. Is this okay?'
+        )
+      ) {
         return;
       }
     }
+
     const dropdownContent = document.querySelector(".dropdown-contentaa");
     if (editMode) {
       const existingEngine = document.querySelector(`.dropdown-contentaa a[data-engine="${originalUrl}"]`);
@@ -502,19 +617,23 @@ document.addEventListener("DOMContentLoaded", function() {
       `;
       dropdownContent.insertBefore(newEngine, document.querySelector(".add-custom-engine"));
     }
+
     document.getElementById("custom-engine-modal").style.display = "none";
     document.getElementById("custom-engine-name").value = "";
     document.getElementById("custom-engine-url").value = "";
     document.getElementById("custom-engine-icon").value = "";
   }
+
   function deleteEngine(engineElement) {
     if (confirm("Are you sure you want to delete this search engine?")) {
       engineElement.remove();
     }
   }
+
   function showCustomEngineModal() {
     document.getElementById("custom-engine-modal").style.display = "flex";
   }
+
   function saveBookmarksToStorage() {
     const bookmarks = [];
     document.querySelectorAll(".bookmark:not(#add-bookmark)").forEach(function(bookmark) {
@@ -526,6 +645,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
   }
+
   function loadBookmarks() {
     const savedBookmarks = localStorage.getItem(STORAGE_KEYS.BOOKMARKS);
     document.querySelectorAll(".bookmark:not(#add-bookmark)").forEach(function(bm) {
@@ -544,42 +664,68 @@ document.addEventListener("DOMContentLoaded", function() {
       loadDefaultBookmarks();
     }
   }
+
   function loadDefaultBookmarks() {
     const defaultBookmarks = [
-      { name: "YouTube", url: "https://www.youtube.com", icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://youtube.com&size=256" },
-      { name: "Twitter", url: "https://twitter.com", icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://twitter.com&size=256" },
-      { name: "Discord", url: "https://discord.com", icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://discord.com&size=256" },
-      { name: "GeForce Now", url: "https://www.nvidia.com/en-us/geforce-now/", icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nvidia.com&size=256" }
+      {
+        name: "YouTube",
+        url: "https://www.youtube.com",
+        icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://youtube.com&size=256"
+      },
+      {
+        name: "Twitter",
+        url: "https://twitter.com",
+        icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://twitter.com&size=256"
+      },
+      {
+        name: "Discord",
+        url: "https://discord.com",
+        icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://discord.com&size=256"
+      },
+      {
+        name: "GeForce Now",
+        url: "https://www.nvidia.com/en-us/geforce-now/",
+        icon: "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nvidia.com&size=256"
+      }
     ];
     defaultBookmarks.forEach(function(bookmark) {
       addBookmarkToDOM(bookmark.name, bookmark.url, bookmark.icon);
     });
   }
+
   function addBookmarkToDOM(name, url, iconUrl) {
     const bookmarksContainer = document.getElementById("bookmarks");
     const bookmark = document.createElement("a");
     bookmark.href = "#";
     bookmark.className = "bookmark";
     bookmark.dataset.url = url;
+
     let faviconUrl = iconUrl;
     if (!iconUrl) {
       const cleanUrl = sanitizeUrl(url);
-      faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
+      faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(
+        cleanUrl
+      )}&size=256`;
     }
+
     bookmark.innerHTML = `
       <img src="${faviconUrl}" alt="${name}">
       <span>${name}</span>
       <button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button>
       <button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>
     `;
+
     bookmarksContainer.insertBefore(bookmark, document.getElementById("add-bookmark"));
+
     const editBtn = bookmark.querySelector(".edit-bookmark");
     const deleteBtn = bookmark.querySelector(".delete-bookmark");
+
     editBtn.addEventListener("click", function(e) {
       e.preventDefault();
       e.stopPropagation();
       editBookmark(bookmark);
     });
+
     deleteBtn.addEventListener("click", function(e) {
       e.preventDefault();
       e.stopPropagation();
@@ -588,6 +734,7 @@ document.addEventListener("DOMContentLoaded", function() {
         saveBookmarksToStorage();
       }
     });
+
     bookmark.addEventListener("click", function(e) {
       if (!e.target.closest(".edit-bookmark") && !e.target.closest(".delete-bookmark")) {
         e.preventDefault();
@@ -595,6 +742,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
+
   function setHomePage(url) {
     if (!url) {
       const iframe = getActiveIframe();
@@ -619,6 +767,7 @@ document.addEventListener("DOMContentLoaded", function() {
       return false;
     }
   }
+
   function editBookmark(bookmarkElement) {
     currentEditingBookmark = bookmarkElement;
     document.getElementById("bookmark-name").value = bookmarkElement.querySelector("span").textContent;
@@ -626,10 +775,12 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("add-bookmark-modal").style.display = "flex";
     document.getElementById("bookmark-name").focus();
   }
+
   function editEngine(engineElement) {
     const name = engineElement.textContent.trim();
     const url = engineElement.dataset.engine;
     const icon = engineElement.querySelector("img").src;
+
     document.getElementById("custom-engine-modal-title").textContent = "Edit Search Engine";
     document.getElementById("custom-engine-name").value = name;
     document.getElementById("custom-engine-url").value = url;
@@ -637,13 +788,16 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("custom-engine-modal").dataset.originalUrl = url;
     document.getElementById("custom-engine-modal").style.display = "flex";
   }
+
   let currentEditingBookmark = null;
+
   function closeBookmarkModal() {
     document.getElementById("add-bookmark-modal").style.display = "none";
     document.getElementById("bookmark-name").value = "";
     document.getElementById("bookmark-url").value = "";
     currentEditingBookmark = null;
   }
+
   function sanitizeUrl(url) {
     let cleanUrl = url.replace(/^(https?:)?\/\//, "");
     cleanUrl = cleanUrl.split("/")[0];
@@ -652,13 +806,20 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     return cleanUrl;
   }
+
   function updateBackgroundImage() {
     const savedBg = localStorage.getItem("backgroundImage");
     if (savedBg) {
       document.documentElement.style.setProperty("--background-image", `url(${savedBg})`);
     }
   }
-  lucide.createIcons();
+
+  // Initialize Lucide icons if present
+  if (typeof lucide !== "undefined" && lucide.createIcons) {
+    lucide.createIcons();
+  }
+
+  // Observe proxy-div to hide/show navbar
   (function() {
     const proxyDiv = document.getElementById("proxy-div");
     const navbar = document.querySelector(".navbar");
