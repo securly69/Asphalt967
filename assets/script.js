@@ -72,6 +72,13 @@ function setupEventListeners() {
       handleSearch(navAddress, false);
     }
   });
+
+  document.getElementById('cancel-bookmark')?.addEventListener('click', closeBookmarkModal);
+  document.getElementById('add-bookmark')?.addEventListener('click', () => {
+    currentEditingBookmark = null;
+    document.getElementById('add-bookmark-modal').style.display = 'flex';
+    document.getElementById('bookmark-name').focus();
+  });
 }
 
 function toggleDropdown(index) {
@@ -304,36 +311,36 @@ function navigateBookmark(url) {
 }
 
 function saveBookmark() {
-    const name = document.getElementById('bookmark-name').value.trim();
-    let url = document.getElementById('bookmark-url').value.trim();
+  const name = document.getElementById('bookmark-name').value.trim();
+  let url = document.getElementById('bookmark-url').value.trim();
     
-    if (!name || !url) {
-        alert('Please fill in both fields');
-        return;
-    }
+  if (!name || !url) {
+    alert('Please fill in both fields');
+    return;
+  }
   
-    if (!/^https?:\/\//i.test(url)) {
-        url = 'https://' + url;
-    }
-    
-    try {
-        new URL(url);
-        const cleanUrl = sanitizeUrl(url);
-        const faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+  
+  try {
+    new URL(url);
+    const cleanUrl = sanitizeUrl(url);
+    const faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
         
-        if (currentEditingBookmark) {
-            currentEditingBookmark.querySelector('span').textContent = name;
-            currentEditingBookmark.dataset.url = url;
-            currentEditingBookmark.querySelector('img').src = faviconUrl;
-        } else {
-            addBookmarkToDOM(name, url, faviconUrl);
-        }
-        
-        saveBookmarksToStorage();
-        closeBookmarkModal();
-    } catch (e) {
-        alert('Please enter a valid URL');
+    if (currentEditingBookmark) {
+      currentEditingBookmark.querySelector('span').textContent = name;
+      currentEditingBookmark.dataset.url = url;
+      currentEditingBookmark.querySelector('img').src = faviconUrl;
+    } else {
+      addBookmarkToDOM(name, url, faviconUrl);
     }
+        
+    saveBookmarksToStorage();
+    closeBookmarkModal();
+  } catch (e) {
+    alert('Please enter a valid URL');
+  }
 }
 
 function loadSearchEngine() {
@@ -424,8 +431,11 @@ function updateTimeDate() {
     minute: '2-digit', 
     second: '2-digit'
   };
-  document.getElementById('time-date').textContent =
-    date.toLocaleDateString('en-US', options).replace(' at', ',');
+  const timeDateElem = document.getElementById('time-date');
+  if (timeDateElem) {
+    timeDateElem.textContent =
+      date.toLocaleDateString('en-US', options).replace(' at', ',');
+  }
 }
 
 function SHS() {
@@ -508,6 +518,7 @@ const typingSpeed = 100;
 const pauseBetween = 2000;
 
 function type() {
+  if (!rotatingText) return;
   const currentMessage = messages[currentMessageIndex];
   
   if (isDeleting) {
@@ -531,63 +542,63 @@ function type() {
 }
 
 function addCustomEngine() {
-    const customName = document.getElementById('custom-engine-name').value.trim();
-    const customUrl = document.getElementById('custom-engine-url').value.trim();
-    const customIcon = document.getElementById('custom-engine-icon').value.trim() || 
-                      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split('?')[0].split('/')[2])}&size=256`;
-    const editMode = document.getElementById('custom-engine-modal-title').textContent === 'Edit Search Engine';
-    const originalUrl = document.getElementById('custom-engine-modal').dataset.originalUrl;
-  
-    if (!customName || !customUrl) {
-      alert('Please provide both a name and URL for the custom search engine');
+  const customName = document.getElementById('custom-engine-name').value.trim();
+  const customUrl = document.getElementById('custom-engine-url').value.trim();
+  const customIcon = document.getElementById('custom-engine-icon').value.trim() || 
+                    `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(customUrl.split('?')[0].split('/')[2])}&size=256`;
+  const editMode = document.getElementById('custom-engine-modal-title').textContent === 'Edit Search Engine';
+  const originalUrl = document.getElementById('custom-engine-modal').dataset.originalUrl;
+
+  if (!customName || !customUrl) {
+    alert('Please provide both a name and URL for the custom search engine');
+    return;
+  }
+
+  if (!customUrl.includes("%s")) {
+    if (!confirm('Your URL doesn\'t contain a "%s" placeholder. The search term will be appended to the end. Is this okay?')) {
       return;
     }
+  }
+
+  const dropdownContent = document.querySelector('.dropdown-contentaa');
   
-    if (!customUrl.includes("%s")) {
-      if (!confirm('Your URL doesn\'t contain a "%s" placeholder. The search term will be appended to the end. Is this okay?')) {
-        return;
-      }
-    }
-  
-    const dropdownContent = document.querySelector('.dropdown-contentaa');
-    
-    if (editMode) {
-      const existingEngine = document.querySelector(`.dropdown-contentaa a[data-engine="${originalUrl}"]`);
-      if (existingEngine) {
-        existingEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
-        existingEngine.innerHTML = `
-          <img src="${customIcon}" alt="${customName}">
-          ${customName}
-          <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
-          <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
-        `;
-      }
-    } else {
-      const newEngine = document.createElement('a');
-      newEngine.href = "javascript:void(0);";
-      newEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
-      newEngine.onclick = function() {
-        selectEngine(
-          customIcon,
-          customUrl.includes("%s") ? customUrl : customUrl + "%s",
-          0
-        );
-      };
-  
-      newEngine.innerHTML = `
+  if (editMode) {
+    const existingEngine = document.querySelector(`.dropdown-contentaa a[data-engine="${originalUrl}"]`);
+    if (existingEngine) {
+      existingEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
+      existingEngine.innerHTML = `
         <img src="${customIcon}" alt="${customName}">
         ${customName}
         <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
         <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
       `;
-  
-      dropdownContent.insertBefore(newEngine, document.querySelector('.add-custom-engine'));
     }
-    
-    document.getElementById('custom-engine-modal').style.display = 'none';
-    document.getElementById('custom-engine-name').value = '';
-    document.getElementById('custom-engine-url').value = '';
-    document.getElementById('custom-engine-icon').value = '';
+  } else {
+    const newEngine = document.createElement('a');
+    newEngine.href = "javascript:void(0);";
+    newEngine.setAttribute('data-engine', customUrl.includes("%s") ? customUrl : customUrl + "%s");
+    newEngine.onclick = function() {
+      selectEngine(
+        customIcon,
+        customUrl.includes("%s") ? customUrl : customUrl + "%s",
+        0
+      );
+    };
+
+    newEngine.innerHTML = `
+      <img src="${customIcon}" alt="${customName}">
+      ${customName}
+      <i class="fa-solid fa-pen edit-engine" onclick="event.stopPropagation();editEngine(this.parentNode)"></i>
+      <i class="fa-solid fa-trash delete-engine" onclick="event.stopPropagation();deleteEngine(this.parentNode)"></i>
+    `;
+
+    dropdownContent.insertBefore(newEngine, document.querySelector('.add-custom-engine'));
+  }
+  
+  document.getElementById('custom-engine-modal').style.display = 'none';
+  document.getElementById('custom-engine-name').value = '';
+  document.getElementById('custom-engine-url').value = '';
+  document.getElementById('custom-engine-icon').value = '';
 }
 
 function deleteEngine(engineElement) {
@@ -601,15 +612,15 @@ function showCustomEngineModal() {
 }
 
 function saveBookmarksToStorage() {
-    const bookmarks = [];
-    document.querySelectorAll('.bookmark:not(#add-bookmark)').forEach(bookmark => {
-      bookmarks.push({
-        name: bookmark.querySelector('span').textContent,
-        url: bookmark.dataset.url,
-        icon: bookmark.querySelector('img').src
-      });
+  const bookmarks = [];
+  document.querySelectorAll('.bookmark:not(#add-bookmark)').forEach(bookmark => {
+    bookmarks.push({
+      name: bookmark.querySelector('span').textContent,
+      url: bookmark.dataset.url,
+      icon: bookmark.querySelector('img').src
     });
-    localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
+  });
+  localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
 }
 
 function loadBookmarks() {
@@ -646,51 +657,51 @@ function loadDefaultBookmarks() {
 }
 
 function addBookmarkToDOM(name, url, iconUrl) {
-    const bookmarksContainer = document.getElementById('bookmarks');
-    const bookmark = document.createElement('a');
-    bookmark.href = '#';
-    bookmark.className = 'bookmark';
-    bookmark.dataset.url = url;
-    
-    let faviconUrl = iconUrl;
-    if (!iconUrl) {
-        const cleanUrl = sanitizeUrl(url);
-        faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
+  const bookmarksContainer = document.getElementById('bookmarks');
+  const bookmark = document.createElement('a');
+  bookmark.href = '#';
+  bookmark.className = 'bookmark';
+  bookmark.dataset.url = url;
+  
+  let faviconUrl = iconUrl;
+  if (!iconUrl) {
+    const cleanUrl = sanitizeUrl(url);
+    faviconUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(cleanUrl)}&size=256`;
+  }
+  
+  bookmark.innerHTML = `
+    <img src="${faviconUrl}" alt="${name}">
+    <span>${name}</span>
+    <button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button>
+    <button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>
+  `;
+  
+  bookmarksContainer.insertBefore(bookmark, document.getElementById('add-bookmark'));
+  
+  const editBtn = bookmark.querySelector('.edit-bookmark');
+  const deleteBtn = bookmark.querySelector('.delete-bookmark');
+  
+  editBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    editBookmark(bookmark);
+  });
+  
+  deleteBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm('Delete this bookmark?')) {
+      bookmark.remove();
+      saveBookmarksToStorage();
     }
-    
-    bookmark.innerHTML = `
-      <img src="${faviconUrl}" alt="${name}">
-      <span>${name}</span>
-      <button class="edit-bookmark"><i class="fa-solid fa-pen"></i></button>
-      <button class="delete-bookmark"><i class="fa-solid fa-trash"></i></button>
-    `;
-    
-    bookmarksContainer.insertBefore(bookmark, document.getElementById('add-bookmark'));
-    
-    const editBtn = bookmark.querySelector('.edit-bookmark');
-    const deleteBtn = bookmark.querySelector('.delete-bookmark');
-    
-    editBtn.addEventListener('click', (e) => {
+  });
+  
+  bookmark.addEventListener('click', (e) => {
+    if (!e.target.closest('.edit-bookmark') && !e.target.closest('.delete-bookmark')) {
       e.preventDefault();
-      e.stopPropagation();
-      editBookmark(bookmark);
-    });
-    
-    deleteBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (confirm('Delete this bookmark?')) {
-        bookmark.remove();
-        saveBookmarksToStorage();
-      }
-    });
-    
-    bookmark.addEventListener('click', (e) => {
-      if (!e.target.closest('.edit-bookmark') && !e.target.closest('.delete-bookmark')) {
-        e.preventDefault();
-        navigateBookmark(url);
-      }
-    });
+      navigateBookmark(url);
+    }
+  });
 }
 
 function setHomePage(url) {
@@ -721,11 +732,11 @@ function setHomePage(url) {
 }
 
 function editBookmark(bookmarkElement) {
-    currentEditingBookmark = bookmarkElement;
-    document.getElementById('bookmark-name').value = bookmarkElement.querySelector('span').textContent;
-    document.getElementById('bookmark-url').value = bookmarkElement.dataset.url;
-    document.getElementById('add-bookmark-modal').style.display = 'flex';
-    document.getElementById('bookmark-name').focus();
+  currentEditingBookmark = bookmarkElement;
+  document.getElementById('bookmark-name').value = bookmarkElement.querySelector('span').textContent;
+  document.getElementById('bookmark-url').value = bookmarkElement.dataset.url;
+  document.getElementById('add-bookmark-modal').style.display = 'flex';
+  document.getElementById('bookmark-name').focus();
 }
 
 function editEngine(engineElement) {
@@ -744,27 +755,19 @@ function editEngine(engineElement) {
 let currentEditingBookmark = null;
 
 function closeBookmarkModal() {
-    document.getElementById('add-bookmark-modal').style.display = 'none';
-    document.getElementById('bookmark-name').value = '';
-    document.getElementById('bookmark-url').value = '';
-    currentEditingBookmark = null;
+  document.getElementById('add-bookmark-modal').style.display = 'none';
+  document.getElementById('bookmark-name').value = '';
+  document.getElementById('bookmark-url').value = '';
+  currentEditingBookmark = null;
 }
 
-document.getElementById('save-bookmark').addEventListener('click', saveBookmark);
-document.getElementById('cancel-bookmark').addEventListener('click', closeBookmarkModal);
-document.getElementById('add-bookmark').addEventListener('click', () => {
-  currentEditingBookmark = null;
-  document.getElementById('add-bookmark-modal').style.display = 'flex';
-  document.getElementById('bookmark-name').focus();
-});
-
 function sanitizeUrl(url) {
-    let cleanUrl = url.replace(/^(https?:)?\/\//, '');
-    cleanUrl = cleanUrl.split('/')[0];
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-        cleanUrl = 'https://' + cleanUrl;
-    }
-    return cleanUrl;
+  let cleanUrl = url.replace(/^(https?:)?\/\//, '');
+  cleanUrl = cleanUrl.split('/')[0];
+  if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+    cleanUrl = 'https://' + cleanUrl;
+  }
+  return cleanUrl;
 }
 
 function updateBackgroundImage() {
@@ -777,11 +780,11 @@ function updateBackgroundImage() {
 lucide.createIcons();
 
 (function(){
-  const proxyDiv = document.getElementById('proxy-div')
-  const navbar = document.querySelector('.navbar')
+  const proxyDiv = document.getElementById('proxy-div');
+  const navbar = document.querySelector('.navbar');
   const observer = new MutationObserver(()=>{
-    if(proxyDiv.classList.contains('show-proxy-div'))navbar.style.display='none'
-    else navbar.style.display='flex'
-  })
-  observer.observe(proxyDiv,{attributes:true,attributeFilter:['class']})
-})()
+    if(proxyDiv.classList.contains('show-proxy-div')) navbar.style.display='none';
+    else navbar.style.display='flex';
+  });
+  observer.observe(proxyDiv, {attributes:true, attributeFilter:['class']});
+})();
