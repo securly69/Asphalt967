@@ -1,33 +1,30 @@
-import basicAuth from 'express-basic-auth';
-import config from './config.js';
-
-// Custom unauthorized response
-const unauthorizedResponse = (req) => {
-  return req.auth
-    ? `Credentials rejected for user: ${req.auth.user}`
-    : 'Authentication required';
+const users = {
+  admin: 'admin123', // Change these!
+  user: 'password123'
 };
 
-// Auth middleware
-export const authMiddleware = (req, res, next) => {
-  // Skip auth if disabled in config
-  if (!config.authEnabled) return next();
-  
-  // Skip auth for public paths
-  if (config.publicPaths.some(path => req.path.startsWith(path))) {
-    return next();
+function checkAuth() {
+  const storedAuth = localStorage.getItem('basic-auth');
+  if (storedAuth) {
+    const [username, password] = atob(storedAuth).split(':');
+    if (users[username] === password) return true;
   }
-  
-  // Apply basic auth
-  basicAuth({
-    users: config.users,
-    challenge: true,
-    unauthorizedResponse
-  })(req, res, next);
-};
 
-// Simple self-test (optional)
-if (import.meta.url === `file://${process.argv[1]}`) {
-  console.log('Auth module self-test:');
-  console.log('Configured users:', Object.keys(config.users));
+  const credentials = prompt('Enter username:password');
+  if (!credentials) return false;
+
+  const [username, password] = credentials.split(':');
+  if (users[username] === password) {
+    localStorage.setItem('basic-auth', btoa(credentials));
+    return true;
+  }
+
+  alert('Invalid credentials');
+  return false;
+}
+
+// Protect the entire site
+if (!checkAuth()) {
+  document.body.innerHTML = '<h1>Access Denied</h1>';
+  throw new Error('Authentication failed');
 }
